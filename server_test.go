@@ -5,6 +5,7 @@
 package rpc
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -43,17 +44,17 @@ type Arith int
 
 // Some of Arith's methods have value args, some have pointer args. That's deliberate.
 
-func (t *Arith) Add(args Args, reply *Reply) error {
+func (t *Arith) Add(ctx context.Context, args Args, reply *Reply) error {
 	reply.C = args.A + args.B
 	return nil
 }
 
-func (t *Arith) Mul(args *Args, reply *Reply) error {
+func (t *Arith) Mul(ctx context.Context, args *Args, reply *Reply) error {
 	reply.C = args.A * args.B
 	return nil
 }
 
-func (t *Arith) Div(args Args, reply *Reply) error {
+func (t *Arith) Div(ctx context.Context, args Args, reply *Reply) error {
 	if args.B == 0 {
 		return errors.New("divide by zero")
 	}
@@ -61,28 +62,28 @@ func (t *Arith) Div(args Args, reply *Reply) error {
 	return nil
 }
 
-func (t *Arith) String(args *Args, reply *string) error {
+func (t *Arith) String(ctx context.Context, args *Args, reply *string) error {
 	*reply = fmt.Sprintf("%d+%d=%d", args.A, args.B, args.A+args.B)
 	return nil
 }
 
-func (t *Arith) Scan(args string, reply *Reply) (err error) {
+func (t *Arith) Scan(ctx context.Context, args string, reply *Reply) (err error) {
 	_, err = fmt.Sscan(args, &reply.C)
 	return
 }
 
-func (t *Arith) Error(args *Args, reply *Reply) error {
+func (t *Arith) Error(ctx context.Context, args *Args, reply *Reply) error {
 	panic("ERROR")
 }
 
-func (t *Arith) SleepMilli(args *Args, reply *Reply) error {
+func (t *Arith) SleepMilli(ctx context.Context, args *Args, reply *Reply) error {
 	time.Sleep(time.Duration(args.A) * time.Millisecond)
 	return nil
 }
 
 type hidden int
 
-func (t *hidden) Exported(args Args, reply *Reply) error {
+func (t *hidden) Exported(ctx context.Context, args Args, reply *Reply) error {
 	reply.C = args.A + args.B
 	return nil
 }
@@ -93,17 +94,17 @@ type Embed struct {
 
 type BuiltinTypes struct{}
 
-func (BuiltinTypes) Map(args *Args, reply *map[int]int) error {
+func (BuiltinTypes) Map(ctx context.Context, args *Args, reply *map[int]int) error {
 	(*reply)[args.A] = args.B
 	return nil
 }
 
-func (BuiltinTypes) Slice(args *Args, reply *[]int) error {
+func (BuiltinTypes) Slice(ctx context.Context, args *Args, reply *[]int) error {
 	*reply = append(*reply, args.A, args.B)
 	return nil
 }
 
-func (BuiltinTypes) Array(args *Args, reply *[2]int) error {
+func (BuiltinTypes) Array(ctx context.Context, args *Args, reply *[2]int) error {
 	(*reply)[0] = args.A
 	(*reply)[1] = args.B
 	return nil
@@ -170,9 +171,10 @@ func testRPC(t *testing.T, addr string) {
 	defer client.Close()
 
 	// Synchronous calls
+	ctx := context.Background()
 	args := &Args{7, 8}
 	reply := new(Reply)
-	err = client.Call("Arith.Add", args, reply)
+	err = client.Call(ctx, "Arith.Add", args, reply)
 	if err != nil {
 		t.Errorf("Add: expected no error but got string %q", err.Error())
 	}
@@ -183,7 +185,7 @@ func testRPC(t *testing.T, addr string) {
 	// Methods exported from unexported embedded structs
 	args = &Args{7, 0}
 	reply = new(Reply)
-	err = client.Call("Embed.Exported", args, reply)
+	err = client.Call(ctx, "Embed.Exported", args, reply)
 	if err != nil {
 		t.Errorf("Add: expected no error but got string %q", err.Error())
 	}
@@ -194,7 +196,7 @@ func testRPC(t *testing.T, addr string) {
 	// Nonexistent method
 	args = &Args{7, 0}
 	reply = new(Reply)
-	err = client.Call("Arith.BadOperation", args, reply)
+	err = client.Call(ctx, "Arith.BadOperation", args, reply)
 	// expect an error
 	if err == nil {
 		t.Error("BadOperation: expected error")
@@ -205,7 +207,7 @@ func testRPC(t *testing.T, addr string) {
 	// Unknown service
 	args = &Args{7, 8}
 	reply = new(Reply)
-	err = client.Call("Arith.Unknown", args, reply)
+	err = client.Call(ctx, "Arith.Unknown", args, reply)
 	if err == nil {
 		t.Error("expected error calling unknown service")
 	} else if !strings.Contains(err.Error(), "method") {
@@ -238,7 +240,7 @@ func testRPC(t *testing.T, addr string) {
 	// Error test
 	args = &Args{7, 0}
 	reply = new(Reply)
-	err = client.Call("Arith.Div", args, reply)
+	err = client.Call(ctx, "Arith.Div", args, reply)
 	// expect an error: zero divide
 	if err == nil {
 		t.Error("Div: expected error")
@@ -248,7 +250,7 @@ func testRPC(t *testing.T, addr string) {
 
 	// Bad type.
 	reply = new(Reply)
-	err = client.Call("Arith.Add", reply, reply) // args, reply would be the correct thing to use
+	err = client.Call(ctx, "Arith.Add", reply, reply) // args, reply would be the correct thing to use
 	if err == nil {
 		t.Error("expected error calling Arith.Add with wrong arg type")
 	} else if !strings.Contains(err.Error(), "type") {
@@ -259,7 +261,7 @@ func testRPC(t *testing.T, addr string) {
 	const Val = 12345
 	str := fmt.Sprint(Val)
 	reply = new(Reply)
-	err = client.Call("Arith.Scan", &str, reply)
+	err = client.Call(ctx, "Arith.Scan", &str, reply)
 	if err != nil {
 		t.Errorf("Scan: expected no error but got string %q", err.Error())
 	} else if reply.C != Val {
@@ -269,7 +271,7 @@ func testRPC(t *testing.T, addr string) {
 	// Non-struct reply
 	args = &Args{27, 35}
 	str = ""
-	err = client.Call("Arith.String", args, &str)
+	err = client.Call(ctx, "Arith.String", args, &str)
 	if err != nil {
 		t.Errorf("String: expected no error but got string %q", err.Error())
 	}
@@ -280,7 +282,7 @@ func testRPC(t *testing.T, addr string) {
 
 	args = &Args{7, 8}
 	reply = new(Reply)
-	err = client.Call("Arith.Mul", args, reply)
+	err = client.Call(ctx, "Arith.Mul", args, reply)
 	if err != nil {
 		t.Errorf("Mul: expected no error but got string %q", err.Error())
 	}
@@ -291,7 +293,7 @@ func testRPC(t *testing.T, addr string) {
 	// ServiceName contain "." character
 	args = &Args{7, 8}
 	reply = new(Reply)
-	err = client.Call("net.rpc.Arith.Add", args, reply)
+	err = client.Call(ctx, "net.rpc.Arith.Add", args, reply)
 	if err != nil {
 		t.Errorf("Add: expected no error but got string %q", err.Error())
 	}
@@ -307,10 +309,12 @@ func testNewServerRPC(t *testing.T, addr string) {
 	}
 	defer client.Close()
 
+	ctx := context.Background()
+
 	// Synchronous calls
 	args := &Args{7, 8}
 	reply := new(Reply)
-	err = client.Call("newServer.Arith.Add", args, reply)
+	err = client.Call(ctx, "newServer.Arith.Add", args, reply)
 	if err != nil {
 		t.Errorf("Add: expected no error but got string %q", err.Error())
 	}
@@ -339,10 +343,12 @@ func testHTTPRPC(t *testing.T, path string) {
 	}
 	defer client.Close()
 
+	ctx := context.Background()
+
 	// Synchronous calls
 	args := &Args{7, 8}
 	reply := new(Reply)
-	err = client.Call("Arith.Add", args, reply)
+	err = client.Call(ctx, "Arith.Add", args, reply)
 	if err != nil {
 		t.Errorf("Add: expected no error but got string %q", err.Error())
 	}
@@ -360,10 +366,12 @@ func TestBuiltinTypes(t *testing.T) {
 	}
 	defer client.Close()
 
+	ctx := context.Background()
+
 	// Map
 	args := &Args{7, 8}
 	replyMap := map[int]int{}
-	err = client.Call("BuiltinTypes.Map", args, &replyMap)
+	err = client.Call(ctx, "BuiltinTypes.Map", args, &replyMap)
 	if err != nil {
 		t.Errorf("Map: expected no error but got string %q", err.Error())
 	}
@@ -374,7 +382,7 @@ func TestBuiltinTypes(t *testing.T) {
 	// Slice
 	args = &Args{7, 8}
 	replySlice := []int{}
-	err = client.Call("BuiltinTypes.Slice", args, &replySlice)
+	err = client.Call(ctx, "BuiltinTypes.Slice", args, &replySlice)
 	if err != nil {
 		t.Errorf("Slice: expected no error but got string %q", err.Error())
 	}
@@ -385,7 +393,7 @@ func TestBuiltinTypes(t *testing.T) {
 	// Array
 	args = &Args{7, 8}
 	replyArray := [2]int{}
-	err = client.Call("BuiltinTypes.Array", args, &replyArray)
+	err = client.Call(ctx, "BuiltinTypes.Array", args, &replyArray)
 	if err != nil {
 		t.Errorf("Array: expected no error but got string %q", err.Error())
 	}
@@ -404,7 +412,7 @@ type CodecEmulator struct {
 	err           error
 }
 
-func (codec *CodecEmulator) Call(serviceMethod string, args *Args, reply *Reply) error {
+func (codec *CodecEmulator) Call(ctx context.Context, serviceMethod string, args *Args, reply *Reply) error {
 	codec.serviceMethod = serviceMethod
 	codec.args = args
 	codec.reply = reply
@@ -459,9 +467,10 @@ func testServeRequest(t *testing.T, server *Server) {
 	client := CodecEmulator{server: server}
 	defer client.Close()
 
+	ctx := context.Background()
 	args := &Args{7, 8}
 	reply := new(Reply)
-	err := client.Call("Arith.Add", args, reply)
+	err := client.Call(ctx, "Arith.Add", args, reply)
 	if err != nil {
 		t.Errorf("Add: expected no error but got string %q", err.Error())
 	}
@@ -469,37 +478,46 @@ func testServeRequest(t *testing.T, server *Server) {
 		t.Errorf("Add: expected %d got %d", reply.C, args.A+args.B)
 	}
 
-	err = client.Call("Arith.Add", nil, reply)
+	err = client.Call(ctx, "Arith.Add", nil, reply)
 	if err == nil {
 		t.Errorf("expected error calling Arith.Add with nil arg")
 	}
 }
 
+type NeedsCtx int
 type ReplyNotPointer int
 type ArgNotPublic int
 type ReplyNotPublic int
 type NeedsPtrType int
 type local struct{}
 
-func (t *ReplyNotPointer) ReplyNotPointer(args *Args, reply Reply) error {
+func (t *NeedsCtx) NeedsCtx(args *Args, reply *Reply) error {
 	return nil
 }
 
-func (t *ArgNotPublic) ArgNotPublic(args *local, reply *Reply) error {
+func (t *ReplyNotPointer) ReplyNotPointer(ctx context.Context, args *Args, reply Reply) error {
 	return nil
 }
 
-func (t *ReplyNotPublic) ReplyNotPublic(args *Args, reply *local) error {
+func (t *ArgNotPublic) ArgNotPublic(ctx context.Context, args *local, reply *Reply) error {
 	return nil
 }
 
-func (t *NeedsPtrType) NeedsPtrType(args *Args, reply *Reply) error {
+func (t *ReplyNotPublic) ReplyNotPublic(ctx context.Context, args *Args, reply *local) error {
+	return nil
+}
+
+func (t *NeedsPtrType) NeedsPtrType(ctx context.Context, args *Args, reply *Reply) error {
 	return nil
 }
 
 // Check that registration handles lots of bad methods and a type with no suitable methods.
 func TestRegistrationError(t *testing.T) {
-	err := Register(new(ReplyNotPointer))
+	err := Register(new(NeedsCtx))
+	if err == nil {
+		t.Error("expected error registering NeedsCtx")
+	}
+	err = Register(new(ReplyNotPointer))
 	if err == nil {
 		t.Error("expected error registering ReplyNotPointer")
 	}
@@ -560,9 +578,10 @@ func testSendDeadlock(client *Client) {
 	defer func() {
 		recover()
 	}()
+	ctx := context.Background()
 	args := &Args{7, 8}
 	reply := new(Reply)
-	client.Call("Arith.Add", args, reply)
+	client.Call(ctx, "Arith.Add", args, reply)
 }
 
 func dialDirect() (*Client, error) {
@@ -581,10 +600,11 @@ func countMallocs(dial func() (*Client, error), t *testing.T) float64 {
 	}
 	defer client.Close()
 
+	ctx := context.Background()
 	args := &Args{7, 8}
 	reply := new(Reply)
 	return testing.AllocsPerRun(100, func() {
-		err := client.Call("Arith.Add", args, reply)
+		err := client.Call(ctx, "Arith.Add", args, reply)
 		if err != nil {
 			t.Errorf("Add: expected no error but got string %q", err.Error())
 		}
@@ -636,8 +656,9 @@ func TestClientWriteError(t *testing.T) {
 	c := NewClient(w)
 	defer c.Close()
 
+	ctx := context.Background()
 	res := false
-	err := c.Call("foo", 1, &res)
+	err := c.Call(ctx, "foo", 1, &res)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -656,9 +677,10 @@ func TestTCPClose(t *testing.T) {
 	}
 	defer client.Close()
 
+	ctx := context.Background()
 	args := Args{17, 8}
 	var reply Reply
-	err = client.Call("Arith.Mul", args, &reply)
+	err = client.Call(ctx, "Arith.Mul", args, &reply)
 	if err != nil {
 		t.Fatal("arith error:", err)
 	}
@@ -670,6 +692,7 @@ func TestTCPClose(t *testing.T) {
 
 func TestErrorAfterClientClose(t *testing.T) {
 	once.Do(startServer)
+	ctx := context.Background()
 
 	client, err := dialHTTP()
 	if err != nil {
@@ -679,7 +702,7 @@ func TestErrorAfterClientClose(t *testing.T) {
 	if err != nil {
 		t.Fatal("close error:", err)
 	}
-	err = client.Call("Arith.Add", &Args{7, 9}, new(Reply))
+	err = client.Call(ctx, "Arith.Add", &Args{7, 9}, new(Reply))
 	if err != ErrShutdown {
 		t.Errorf("Forever: expected ErrShutdown got %v", err)
 	}
@@ -723,10 +746,11 @@ func TestShutdown(t *testing.T) {
 	newServer.Register(new(Arith))
 	go newServer.ServeConn(c1)
 
+	ctx := context.Background()
 	args := &Args{7, 8}
 	reply := new(Reply)
 	client := NewClient(c)
-	err = client.Call("Arith.Add", args, reply)
+	err = client.Call(ctx, "Arith.Add", args, reply)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -754,13 +778,14 @@ func benchmarkEndToEnd(dial func() (*Client, error), b *testing.B) {
 	defer client.Close()
 
 	// Synchronous calls
+	ctx := context.Background()
 	args := &Args{7, 8}
 	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
 		reply := new(Reply)
 		for pb.Next() {
-			err := client.Call("Arith.Add", args, reply)
+			err := client.Call(ctx, "Arith.Add", args, reply)
 			if err != nil {
 				b.Fatalf("rpc error: Add: expected no error but got string %q", err.Error())
 			}
