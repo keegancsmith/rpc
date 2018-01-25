@@ -142,6 +142,8 @@ import (
 	"sync"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/keegancsmith/rpc/internal/svc"
 )
 
 const (
@@ -200,7 +202,9 @@ type Server struct {
 
 // NewServer returns a new Server.
 func NewServer() *Server {
-	return &Server{}
+	s := &Server{}
+	s.RegisterName("_goRPC_", &svc.GoRPC{})
+	return s
 }
 
 // DefaultServer is the default instance of *Server.
@@ -383,15 +387,22 @@ func (m *methodType) NumCalls() (n uint) {
 	return n
 }
 
-func (s *service) call(server *Server, sending *sync.Mutex, wg *sync.WaitGroup, mtype *methodType, req *Request, argv, replyv reflect.Value, codec ServerCodec) {
+func (s *service) call(server *Server, sending *sync.Mutex, pending *svc.Pending, wg *sync.WaitGroup, mtype *methodType, req *Request, argv, replyv reflect.Value, codec ServerCodec) {
 	if wg != nil {
 		defer wg.Done()
+	}
+	// _goRPC_ service calls require internal state.
+	if s.name == "_goRPC_" {
+		switch v := argv.Interface().(type) {
+		case *svc.CancelArgs:
+			v.Pending = pending
+		}
 	}
 	mtype.Lock()
 	mtype.numCalls++
 	mtype.Unlock()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := pending.Start(req.Seq)
+	defer pending.Cancel(req.Seq)
 	function := mtype.method.Func
 	// Invoke the method, providing a new value for the reply.
 	returnValues := function.Call([]reflect.Value{s.rcvr, reflect.ValueOf(ctx), argv, replyv})
@@ -472,6 +483,7 @@ func (server *Server) ServeConn(conn io.ReadWriteCloser) {
 // decode requests and encode responses.
 func (server *Server) ServeCodec(codec ServerCodec) {
 	sending := new(sync.Mutex)
+	pending := svc.NewPending()
 	wg := new(sync.WaitGroup)
 	for {
 		service, mtype, req, argv, replyv, keepReading, err := server.readRequest(codec)
@@ -490,7 +502,7 @@ func (server *Server) ServeCodec(codec ServerCodec) {
 			continue
 		}
 		wg.Add(1)
-		go service.call(server, sending, wg, mtype, req, argv, replyv, codec)
+		go service.call(server, sending, pending, wg, mtype, req, argv, replyv, codec)
 	}
 	// We've seen that there are no more requests.
 	// Wait for responses to be sent before closing codec.
@@ -502,6 +514,7 @@ func (server *Server) ServeCodec(codec ServerCodec) {
 // It does not close the codec upon completion.
 func (server *Server) ServeRequest(codec ServerCodec) error {
 	sending := new(sync.Mutex)
+	pending := svc.NewPending()
 	service, mtype, req, argv, replyv, keepReading, err := server.readRequest(codec)
 	if err != nil {
 		if !keepReading {
@@ -514,7 +527,7 @@ func (server *Server) ServeRequest(codec ServerCodec) error {
 		}
 		return err
 	}
-	service.call(server, sending, nil, mtype, req, argv, replyv, codec)
+	service.call(server, sending, pending, nil, mtype, req, argv, replyv, codec)
 	return nil
 }
 

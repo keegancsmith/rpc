@@ -14,6 +14,8 @@ import (
 	"net"
 	"net/http"
 	"sync"
+
+	"github.com/keegancsmith/rpc/internal/svc"
 )
 
 // ServerError represents an error that has been returned from
@@ -33,6 +35,7 @@ type Call struct {
 	Reply         interface{} // The reply from the function (*struct).
 	Error         error       // After completion, the error status.
 	Done          chan *Call  // Strobes when call is complete.
+	seq           uint64      // Sequence num used to send. Non-zero when sent.
 }
 
 // Client represents an RPC Client.
@@ -81,8 +84,16 @@ func (client *Client) send(call *Call) {
 		call.done()
 		return
 	}
-	seq := client.seq
+	if call.seq != 0 {
+		// It has already been canceled, don't bother sending
+		call.Error = context.Canceled
+		client.mutex.Unlock()
+		call.done()
+		return
+	}
 	client.seq++
+	seq := client.seq
+	call.seq = seq
 	client.pending[seq] = call
 	client.mutex.Unlock()
 
@@ -315,11 +326,28 @@ func (client *Client) Go(serviceMethod string, args interface{}, reply interface
 
 // Call invokes the named function, waits for it to complete, and returns its error status.
 func (client *Client) Call(ctx context.Context, serviceMethod string, args interface{}, reply interface{}) error {
-	call := client.Go(serviceMethod, args, reply, make(chan *Call, 1))
+	ch := make(chan *Call, 2) // 2 for this call and cancel
+	call := client.Go(serviceMethod, args, reply, ch)
 	select {
 	case <-call.Done:
 		return call.Error
 	case <-ctx.Done():
+		// Cancel the pending request on the client
+		client.mutex.Lock()
+		seq := call.seq
+		_, ok := client.pending[seq]
+		delete(client.pending, seq)
+		if seq == 0 {
+			// hasn't been sent yet, non-zero will prevent send
+			call.seq = 1
+		}
+		client.mutex.Unlock()
+
+		// Cancel running request on the server
+		if seq != 0 && ok {
+			client.Go("_goRPC_.Cancel", &svc.CancelArgs{Seq: seq}, nil, ch)
+		}
+
 		return ctx.Err()
 	}
 }
