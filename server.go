@@ -3,6 +3,16 @@
 // license that can be found in the LICENSE file.
 
 /*
+	Package rpc is a fork of the stdlib net/rpc which is frozen. It adds
+	support for context.Context on the client and server, including
+	propogating cancellation. See the README at
+	https://github.com/keegancsmith/rpc for motivation why this exists.
+
+	The API is exactly the same, except Client.Call takes a context.Context,
+	and Server methods are expected to take a context.Context as the first
+	argument. The following is the original rpc godoc updated to include
+	context.Context.
+
 	Package rpc provides access to the exported methods of an object across a
 	network or other I/O connection.  A server registers an object, making it visible
 	as a service with the name of the type of the object.  After registration, exported
