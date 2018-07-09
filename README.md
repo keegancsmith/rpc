@@ -33,8 +33,7 @@ freeze net/rpc](https://github.com/golang/go/issues/16844).
 
 ## Details
 
-Forked from commit
-[a89fa7040b](https://github.com/golang/go/commit/a89fa7040b) on 25 January
-2018.
+Last forked from commit [92c29ef](https://github.com/golang/go/commit/92c29ef)
+on 9 July 2018.
 
 Cancellation implemented via the rpc call `_goRPC_.Cancel`.
