@@ -11,7 +11,8 @@
 	The API is exactly the same, except Client.Call takes a context.Context,
 	and Server methods are expected to take a context.Context as the first
 	argument. The following is the original rpc godoc updated to include
-	context.Context.
+	context.Context. Additionally the wire protocol is unchanged, so is
+	backwards compatible with net/rpc clients.
 
 	Package rpc provides access to the exported methods of an object across a
 	network or other I/O connection.  A server registers an object, making it visible

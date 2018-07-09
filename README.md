@@ -6,7 +6,8 @@ including propogating cancellation.
 
 The API is exactly the same, except `Client.Call` takes a `context.Context`,
 and Server methods are expected to take a `context.Context` as the first
-argument.
+argument. Additionally the wire protocol is unchanged, so is backwards
+compatible with `net/rpc` clients.
 
 ## Why use net/rpc
 
@@ -35,3 +36,5 @@ freeze net/rpc](https://github.com/golang/go/issues/16844).
 Forked from commit
 [a89fa7040b](https://github.com/golang/go/commit/a89fa7040b) on 25 January
 2018.
+
+Cancellation implemented via the rpc call `_goRPC_.Cancel`.
