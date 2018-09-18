@@ -2,7 +2,7 @@
 
 This is a fork of the stdlib [net/rpc](https://golang.org/pkg/net/rpc/) which
 is frozen. It adds support for `context.Context` on the client and server,
-including propogating cancellation.
+including propagating cancellation.
 
 The API is exactly the same, except `Client.Call` takes a `context.Context`,
 and Server methods are expected to take a `context.Context` as the first
