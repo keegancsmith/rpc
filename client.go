@@ -257,7 +257,9 @@ func DialHTTPPath(network, address, path string) (*Client, error) {
 }
 
 // DialHTTPPathTimeout connects to an HTTP RPC server
-// at the specified network address and path with the specified timeout.
+// at the specified network address and path with the specified timeout for Dialing.
+//
+// This is a function added by github.com/keegancsmith/rpc
 func DialHTTPPathTimeout(network, address, path string, timeout time.Duration) (*Client, error) {
 	var err error
 	conn, err := net.DialTimeout(network, address, timeout)

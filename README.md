@@ -9,6 +9,9 @@ and Server methods are expected to take a `context.Context` as the first
 argument. Additionally the wire protocol is unchanged, so is backwards
 compatible with `net/rpc` clients.
 
+`DialHTTPPathTimeout` function is also added. A future release of rpc may
+update all Dial functions to instead take a context.
+
 ## Why use net/rpc
 
 There are many alternatives for RPC in Go, the most popular being
