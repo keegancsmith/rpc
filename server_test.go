@@ -5,12 +5,15 @@
 package rpc
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"reflect"
@@ -456,6 +459,72 @@ func TestContext(t *testing.T) {
 	wait("client side to be done after cancel", done)
 	wait("server side to be done after cancel", svc.done)
 	if err != context.Canceled {
+		t.Fatalf("expected to fail due to context cancellation: %v", err)
+	}
+}
+
+type JsonServer struct {
+	srv *Server
+}
+
+func (server *JsonServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	rwc := &HTTPReadWriteCloser{
+		In:  req.Body,
+		Out: w,
+	}
+	codec := NewJsonServerCodec(rwc)
+	server.srv.ServeCodec(codec)
+}
+
+func TestContextCodec(t *testing.T) {
+	svc := &Context{
+		started: make(chan struct{}),
+		done:    make(chan struct{}),
+	}
+
+	srv := NewServer()
+	srv.Register(svc)
+	handler := &JsonServer{srv}
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+
+	wait := func(desc string, c chan struct{}) {
+		t.Helper()
+		select {
+		case <-c:
+			return
+		case <-time.After(5 * time.Second):
+			t.Fatal("Failed to wait for", desc)
+		}
+	}
+
+	b, err := json.Marshal(&jsonClientRequest{
+		Method: "Context.Wait",
+		Params: [1]interface{}{""},
+		Id:     1234,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		var req *http.Request
+		req, err = http.NewRequestWithContext(ctx, http.MethodPost, ts.URL, bytes.NewBuffer(b))
+		if err != nil {
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		_, err = http.DefaultClient.Do(req)
+	}()
+
+	wait("server side to be called", svc.started)
+	cancel()
+	wait("client side to be done after cancel", done)
+	wait("server side to be done after cancel", svc.done)
+	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected to fail due to context cancellation: %v", err)
 	}
 }

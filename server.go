@@ -495,7 +495,8 @@ func (server *Server) ServeConn(conn io.ReadWriteCloser) {
 // decode requests and encode responses.
 func (server *Server) ServeCodec(codec ServerCodec) {
 	sending := new(sync.Mutex)
-	pending := svc.NewPending()
+	ctx, cancel := context.WithCancel(context.Background())
+	pending := svc.NewPending(ctx)
 	wg := new(sync.WaitGroup)
 	for {
 		service, mtype, req, argv, replyv, keepReading, err := server.readRequest(codec)
@@ -504,6 +505,7 @@ func (server *Server) ServeCodec(codec ServerCodec) {
 				log.Println("rpc:", err)
 			}
 			if !keepReading {
+				cancel()
 				break
 			}
 			// send a response if we actually managed to read a header.
@@ -525,8 +527,13 @@ func (server *Server) ServeCodec(codec ServerCodec) {
 // ServeRequest is like ServeCodec but synchronously serves a single request.
 // It does not close the codec upon completion.
 func (server *Server) ServeRequest(codec ServerCodec) error {
+	return server.ServeRequestContext(context.Background(), codec)
+}
+
+// ServeRequestContext is like ServeRequest but uses the provided context.
+func (server *Server) ServeRequestContext(ctx context.Context, codec ServerCodec) error {
 	sending := new(sync.Mutex)
-	pending := svc.NewPending()
+	pending := svc.NewPending(ctx)
 	service, mtype, req, argv, replyv, keepReading, err := server.readRequest(codec)
 	if err != nil {
 		if !keepReading {
@@ -720,7 +727,11 @@ func ServeCodec(codec ServerCodec) {
 // ServeRequest is like ServeCodec but synchronously serves a single request.
 // It does not close the codec upon completion.
 func ServeRequest(codec ServerCodec) error {
-	return DefaultServer.ServeRequest(codec)
+	return ServeRequestContext(context.Background(), codec)
+}
+
+func ServeRequestContext(ctx context.Context, codec ServerCodec) error {
+	return DefaultServer.ServeRequestContext(ctx, codec)
 }
 
 // Accept accepts connections on the listener and serves requests
