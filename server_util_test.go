@@ -1,9 +1,12 @@
 // This code is all of https://golang.org/src/net/rpc/jsonrpc/server.go and some of
-// https://golang.org/src/net/rpc/jsonrpc/client.go, (both adjusted to use the fork)
-// plus some original content.
+// https://golang.org/src/net/rpc/jsonrpc/client.go (both adjusted to use the fork).
 //
 // Unfortunately but logically the net/rpc/jsonrpc uses net/rpc types which are
 // incompatible with this fork, so the code could not be used as-is.
+//
+// Copyright 2010 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 //
 package rpc
 
@@ -133,12 +136,3 @@ type jsonClientRequest struct {
 	Params [1]interface{} `json:"params"`
 	Id     uint64         `json:"id"`
 }
-
-type HTTPReadWriteCloser struct {
-	In  io.Reader
-	Out io.Writer
-}
-
-func (c *HTTPReadWriteCloser) Read(p []byte) (n int, err error)  { return c.In.Read(p) }
-func (c *HTTPReadWriteCloser) Write(d []byte) (n int, err error) { return c.Out.Write(d) }
-func (c *HTTPReadWriteCloser) Close() error                      { return nil }
