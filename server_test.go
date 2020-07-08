@@ -473,7 +473,7 @@ func (server *JsonServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		Out: w,
 	}
 	codec := NewJsonServerCodec(rwc)
-	server.srv.ServeCodec(codec)
+	server.srv.ServeRequestContext(req.Context(), codec)
 }
 
 func TestContextCodec(t *testing.T) {
