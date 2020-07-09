@@ -5,5 +5,5 @@ is frozen.
 
 ## Details
 
-Last forked from commit [08ab820](https://github.com/golang/go/commit/08ab820)
-on 25 September 2018.
+Last forked from commit [292a771](https://github.com/golang/go/commit/292a771)
+on 16 June 2020.
