@@ -12,6 +12,9 @@ compatible with `net/rpc` clients.
 `DialHTTPPathTimeout` function is also added. A future release of rpc may
 update all Dial functions to instead take a context.
 
+`ClientTrace` functionality is also added. This is for hooking into the rpc
+client to enable tracing.
+
 ## Why use net/rpc
 
 There are many alternatives for RPC in Go, the most popular being

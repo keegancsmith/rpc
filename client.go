@@ -39,6 +39,38 @@ type Call struct {
 	seq           uint64      // Sequence num used to send. Non-zero when sent.
 }
 
+// ClientTrace is a set of hooks to run at various stages of an outgoing RPC
+// request. Any particular hook may be nil. Functions may be called
+// concurrently from different goroutines.
+//
+// ClientTrace currently traces a single RPC request, not the response.
+type ClientTrace struct {
+	// WriteRequestStart is called when start WriteRequest. Concurrent calls to
+	// Client.Go or Client.Call can cause a queue to form, leading to a delay
+	// between calls to Client.Go/Client.Call and WriteRequestStart being
+	// called.
+	WriteRequestStart func()
+
+	// WriteRequestDone is called once WriteRequest returns with the error
+	// returned from WriteRequest.
+	WriteRequestDone func(err error)
+}
+
+// unique type to prevent assignment.
+type clientTraceContextKey struct{}
+
+// WithClientTrace returns a new context based on the provided parent
+// ctx. Requests made with the returned context will use the provided trace
+// hooks. Previous hooks registered with ctx are ignored.
+func WithClientTrace(ctx context.Context, trace *ClientTrace) context.Context {
+	return context.WithValue(ctx, clientTraceContextKey{}, trace)
+}
+
+func contextClientTrace(ctx context.Context) *ClientTrace {
+	trace, _ := ctx.Value(clientTraceContextKey{}).(*ClientTrace)
+	return trace
+}
+
 // Client represents an RPC Client.
 // There may be multiple outstanding Calls associated
 // with a single Client, and a Client may be used by
@@ -73,7 +105,9 @@ type ClientCodec interface {
 	Close() error
 }
 
-func (client *Client) send(call *Call) {
+func (client *Client) send(ctx context.Context, call *Call) {
+	trace := contextClientTrace(ctx)
+
 	client.reqMutex.Lock()
 	defer client.reqMutex.Unlock()
 
@@ -98,10 +132,17 @@ func (client *Client) send(call *Call) {
 	client.pending[seq] = call
 	client.mutex.Unlock()
 
+	if trace != nil && trace.WriteRequestStart != nil {
+		trace.WriteRequestStart()
+	}
+
 	// Encode and send the request.
 	client.request.Seq = seq
 	client.request.ServiceMethod = call.ServiceMethod
 	err := client.codec.WriteRequest(&client.request, call.Args)
+	if trace != nil && trace.WriteRequestDone != nil {
+		trace.WriteRequestDone(err)
+	}
 	if err != nil {
 		client.mutex.Lock()
 		call = client.pending[seq]
@@ -313,11 +354,16 @@ func (client *Client) Close() error {
 	return client.codec.Close()
 }
 
+// Go calls client.GoContext with a background context. See GoContext docstring.
+func (client *Client) Go(serviceMethod string, args interface{}, reply interface{}, done chan *Call) *Call {
+	return client.GoContext(context.Background(), serviceMethod, args, reply, done)
+}
+
 // Go invokes the function asynchronously. It returns the Call structure representing
 // the invocation. The done channel will signal when the call is complete by returning
 // the same Call object. If done is nil, Go will allocate a new channel.
 // If non-nil, done must be buffered or Go will deliberately crash.
-func (client *Client) Go(serviceMethod string, args interface{}, reply interface{}, done chan *Call) *Call {
+func (client *Client) GoContext(ctx context.Context, serviceMethod string, args interface{}, reply interface{}, done chan *Call) *Call {
 	call := new(Call)
 	call.ServiceMethod = serviceMethod
 	call.Args = args
@@ -334,14 +380,14 @@ func (client *Client) Go(serviceMethod string, args interface{}, reply interface
 		}
 	}
 	call.Done = done
-	client.send(call)
+	client.send(ctx, call)
 	return call
 }
 
 // Call invokes the named function, waits for it to complete, and returns its error status.
 func (client *Client) Call(ctx context.Context, serviceMethod string, args interface{}, reply interface{}) error {
 	ch := make(chan *Call, 2) // 2 for this call and cancel
-	call := client.Go(serviceMethod, args, reply, ch)
+	call := client.GoContext(ctx, serviceMethod, args, reply, ch)
 	select {
 	case <-call.Done:
 		return call.Error

@@ -86,3 +86,45 @@ func TestGobError(t *testing.T) {
 
 	listen.Close()
 }
+
+type ClientCodecError struct {
+	WriteRequestError error
+}
+
+func (c *ClientCodecError) WriteRequest(*Request, interface{}) error {
+	return c.WriteRequestError
+}
+func (c *ClientCodecError) ReadResponseHeader(*Response) error {
+	return nil
+}
+func (c *ClientCodecError) ReadResponseBody(interface{}) error {
+	return nil
+}
+func (c *ClientCodecError) Close() error {
+	return nil
+}
+
+func TestClientTrace(t *testing.T) {
+	wantErr := errors.New("test")
+	client := NewClientWithCodec(&ClientCodecError{WriteRequestError: wantErr})
+	defer client.Close()
+
+	startCalled := false
+	var gotErr error
+	ctx := WithClientTrace(context.Background(), &ClientTrace{
+		WriteRequestStart: func() { startCalled = true },
+		WriteRequestDone:  func(err error) { gotErr = err },
+	})
+
+	var reply Reply
+	err := client.Call(ctx, "S.Recv", &struct{}{}, &reply)
+	if err != wantErr {
+		t.Fatalf("expected Call to return the same error sent to ClientTrace.WriteRequestDone: want %v, got %v", wantErr, err)
+	}
+	if gotErr != wantErr {
+		t.Fatalf("expected ClientTrace.WriteRequestDone to be called with error %v, got %v", wantErr, gotErr)
+	}
+	if !startCalled {
+		t.Fatal("expected ClientTrace.WriteRequestStart to be called")
+	}
+}
