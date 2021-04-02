@@ -989,3 +989,46 @@ func BenchmarkEndToEndAsync(b *testing.B) {
 func BenchmarkEndToEndAsyncHTTP(b *testing.B) {
 	benchmarkEndToEndAsync(dialHTTP, b)
 }
+
+func TestUnregister(t *testing.T) {
+	var l net.Listener
+	l, _ = listenTCP()
+	ch := make(chan net.Conn, 1)
+	go func() {
+		defer l.Close()
+		c, err := l.Accept()
+		if err != nil {
+			t.Error(err)
+		}
+		ch <- c
+	}()
+	c, err := net.Dial("tcp", l.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c1 := <-ch
+	if c1 == nil {
+		t.Fatal(err)
+	}
+
+	newServer := NewServer()
+	newServer.Register(new(Arith))
+	go newServer.ServeConn(c1)
+
+	ctx := context.Background()
+	args := &Args{7, 8}
+	reply := new(Reply)
+	client := NewClient(c)
+	err = client.Call(ctx, "Arith.Add", args, reply)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newServer.UnregisterName("Arith")
+	expErrMsg := "rpc: can't find service Arith.Add"
+
+	err = client.Call(ctx, "Arith.Add", args, reply)
+	if err == nil || err.Error() != expErrMsg {
+		t.Fatalf("Expected error with message: %s but received: %v", expErrMsg, err)
+	}
+	c.Close()
+}

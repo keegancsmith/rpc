@@ -361,6 +361,18 @@ func suitableMethods(typ reflect.Type, reportErr bool) map[string]*methodType {
 	return methods
 }
 
+// UnregisterName remove the service from the server
+// It returns an error if the service was not registered
+// This can be used to update the server dynamically
+// by bringing the service down or replacing it without
+// replacing the server
+func (server *Server) UnregisterName(name string) error {
+	if _, loaded := server.serviceMap.LoadAndDelete(name); loaded {
+		return errors.New("rpc: service not defined: " + name)
+	}
+	return nil
+}
+
 // A value sent as a placeholder for the server's response value when the server
 // receives an invalid request. It is never decoded by the client since the Response
 // contains an error when it is used.

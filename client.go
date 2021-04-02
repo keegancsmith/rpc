@@ -307,7 +307,6 @@ func DialHTTPPath(network, address, path string) (*Client, error) {
 //
 // This is a function added by github.com/keegancsmith/rpc
 func DialHTTPPathTimeout(network, address, path string, timeout time.Duration) (*Client, error) {
-	var err error
 	conn, err := net.DialTimeout(network, address, timeout)
 	if err != nil {
 		return nil, err
