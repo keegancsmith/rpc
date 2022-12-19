@@ -62,8 +62,8 @@ func (r *jsonServerRequest) reset() {
 
 type jsonServerResponse struct {
 	Id     *json.RawMessage `json:"id"`
-	Result interface{}      `json:"result"`
-	Error  interface{}      `json:"error"`
+	Result any              `json:"result"`
+	Error  any              `json:"error"`
 }
 
 func (c *jsonServerCodec) ReadRequestHeader(r *Request) error {
@@ -86,7 +86,7 @@ func (c *jsonServerCodec) ReadRequestHeader(r *Request) error {
 	return nil
 }
 
-func (c *jsonServerCodec) ReadRequestBody(x interface{}) error {
+func (c *jsonServerCodec) ReadRequestBody(x any) error {
 	if x == nil {
 		return nil
 	}
@@ -97,14 +97,14 @@ func (c *jsonServerCodec) ReadRequestBody(x interface{}) error {
 	// RPC params is struct.
 	// Unmarshal into array containing struct for now.
 	// Should think about making RPC more general.
-	var params [1]interface{}
+	var params [1]any
 	params[0] = x
 	return json.Unmarshal(*c.req.Params, &params)
 }
 
 var null = json.RawMessage([]byte("null"))
 
-func (c *jsonServerCodec) WriteResponse(r *Response, x interface{}) error {
+func (c *jsonServerCodec) WriteResponse(r *Response, x any) error {
 	c.mutex.Lock()
 	b, ok := c.pending[r.Seq]
 	if !ok {
@@ -132,7 +132,7 @@ func (c *jsonServerCodec) Close() error {
 }
 
 type jsonClientRequest struct {
-	Method string         `json:"method"`
-	Params [1]interface{} `json:"params"`
-	Id     uint64         `json:"id"`
+	Method string `json:"method"`
+	Params [1]any `json:"params"`
+	Id     uint64 `json:"id"`
 }

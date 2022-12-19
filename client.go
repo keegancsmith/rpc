@@ -31,12 +31,12 @@ var ErrShutdown = errors.New("connection is shut down")
 
 // Call represents an active RPC.
 type Call struct {
-	ServiceMethod string      // The name of the service and method to call.
-	Args          interface{} // The argument to the function (*struct).
-	Reply         interface{} // The reply from the function (*struct).
-	Error         error       // After completion, the error status.
-	Done          chan *Call  // Receives *Call when Go is complete.
-	seq           uint64      // Sequence num used to send. Non-zero when sent.
+	ServiceMethod string     // The name of the service and method to call.
+	Args          any        // The argument to the function (*struct).
+	Reply         any        // The reply from the function (*struct).
+	Error         error      // After completion, the error status.
+	Done          chan *Call // Receives *Call when Go is complete.
+	seq           uint64     // Sequence num used to send. Non-zero when sent.
 }
 
 // ClientTrace is a set of hooks to run at various stages of an outgoing RPC
@@ -98,9 +98,9 @@ type Client struct {
 // discarded.
 // See NewClient's comment for information about concurrent access.
 type ClientCodec interface {
-	WriteRequest(*Request, interface{}) error
+	WriteRequest(*Request, any) error
 	ReadResponseHeader(*Response) error
-	ReadResponseBody(interface{}) error
+	ReadResponseBody(any) error
 
 	Close() error
 }
@@ -268,7 +268,7 @@ type gobClientCodec struct {
 	encBuf *bufio.Writer
 }
 
-func (c *gobClientCodec) WriteRequest(r *Request, body interface{}) (err error) {
+func (c *gobClientCodec) WriteRequest(r *Request, body any) (err error) {
 	if err = c.enc.Encode(r); err != nil {
 		return
 	}
@@ -282,7 +282,7 @@ func (c *gobClientCodec) ReadResponseHeader(r *Response) error {
 	return c.dec.Decode(r)
 }
 
-func (c *gobClientCodec) ReadResponseBody(body interface{}) error {
+func (c *gobClientCodec) ReadResponseBody(body any) error {
 	return c.dec.Decode(body)
 }
 
@@ -307,7 +307,6 @@ func DialHTTPPath(network, address, path string) (*Client, error) {
 //
 // This is a function added by github.com/keegancsmith/rpc
 func DialHTTPPathTimeout(network, address, path string, timeout time.Duration) (*Client, error) {
-	var err error
 	conn, err := net.DialTimeout(network, address, timeout)
 	if err != nil {
 		return nil, err
@@ -355,15 +354,15 @@ func (client *Client) Close() error {
 }
 
 // Go calls client.GoContext with a background context. See GoContext docstring.
-func (client *Client) Go(serviceMethod string, args interface{}, reply interface{}, done chan *Call) *Call {
+func (client *Client) Go(serviceMethod string, args any, reply any, done chan *Call) *Call {
 	return client.GoContext(context.Background(), serviceMethod, args, reply, done)
 }
 
-// Go invokes the function asynchronously. It returns the Call structure representing
+// GoContext invokes the function asynchronously. It returns the Call structure representing
 // the invocation. The done channel will signal when the call is complete by returning
 // the same Call object. If done is nil, Go will allocate a new channel.
 // If non-nil, done must be buffered or Go will deliberately crash.
-func (client *Client) GoContext(ctx context.Context, serviceMethod string, args interface{}, reply interface{}, done chan *Call) *Call {
+func (client *Client) GoContext(ctx context.Context, serviceMethod string, args any, reply any, done chan *Call) *Call {
 	call := new(Call)
 	call.ServiceMethod = serviceMethod
 	call.Args = args
@@ -385,7 +384,7 @@ func (client *Client) GoContext(ctx context.Context, serviceMethod string, args 
 }
 
 // Call invokes the named function, waits for it to complete, and returns its error status.
-func (client *Client) Call(ctx context.Context, serviceMethod string, args interface{}, reply interface{}) error {
+func (client *Client) Call(ctx context.Context, serviceMethod string, args any, reply any) error {
 	ch := make(chan *Call, 2) // 2 for this call and cancel
 	call := client.GoContext(ctx, serviceMethod, args, reply, ch)
 	select {
